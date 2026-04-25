@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledger.allora.usable.dev/schemas/exception-case.v0.schema.json",
+  "title": "Supply-chain Exception Ledger v0 Case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_type",
+    "canonical_key",
+    "shipment",
+    "customer_context",
+    "classification",
+    "blocking_counterpart",
+    "operator_hypothesis",
+    "open_questions",
+    "evidence",
+    "resolution_status",
+    "source_families"
+  ],
+  "properties": {
+    "case_type": {
+      "const": "commercial_invoice_or_customs_document_exception"
+    },
+    "canonical_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shipment_id", "document_type", "order_reference"],
+      "properties": {
+        "shipment_id": { "type": "string", "minLength": 1 },
+        "document_type": { "const": "commercial_invoice" },
+        "order_reference": { "type": "string", "minLength": 1 }
+      }
+    },
+    "shipment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shipment_id", "release_status", "invoice_reference"],
+      "properties": {
+        "shipment_id": { "type": "string", "minLength": 1 },
+        "release_status": {
+          "enum": ["hold", "pending_release", "released"]
+        },
+        "invoice_reference": { "type": "string", "minLength": 1 },
+        "consignee_name": { "type": "string" }
+      }
+    },
+    "customer_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["customer_name"],
+      "properties": {
+        "customer_name": { "type": "string", "minLength": 1 },
+        "consignee_name": { "type": "string" }
+      }
+    },
+    "classification": {
+      "enum": ["missing", "mismatch"]
+    },
+    "blocking_counterpart": {
+      "enum": ["carrier", "broker", "warehouse", "internal_docs_team"]
+    },
+    "operator_hypothesis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_family", "artifact_ref", "provenance_event_id"],
+        "properties": {
+          "source_family": {
+            "enum": [
+              "erp_order_invoice",
+              "wms_shipment",
+              "tms_milestone",
+              "edi_document_status",
+              "email_attachment_intake"
+            ]
+          },
+          "artifact_ref": { "type": "string", "minLength": 1 },
+          "provenance_event_id": { "type": "string", "minLength": 1 },
+          "customs_supporting_document_type": {
+            "enum": ["packing_list", "certificate_of_origin", "other_customs_supporting_doc"]
+          }
+        }
+      }
+    },
+    "resolution_status": {
+      "enum": ["open", "waiting_for_artifact", "updated", "resolved"]
+    },
+    "source_families": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "erp_order_invoice",
+          "wms_shipment",
+          "tms_milestone",
+          "edi_document_status",
+          "email_attachment_intake"
+        ]
+      }
+    }
+  }
+}

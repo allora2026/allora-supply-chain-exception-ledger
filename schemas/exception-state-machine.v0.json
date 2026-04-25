@@ -1,0 +1,43 @@
+{
+  "states": [
+    "provisional_correlation",
+    "open",
+    "waiting_for_artifact",
+    "updated",
+    "resolved"
+  ],
+  "initial_state": "provisional_correlation",
+  "terminal_states": ["resolved"],
+  "transitions": [
+    {
+      "from": "provisional_correlation",
+      "event_family": "expected_document_missing",
+      "to": "open"
+    },
+    {
+      "from": "provisional_correlation",
+      "event_family": "document_mismatch_detected",
+      "to": "open"
+    },
+    {
+      "from": "open",
+      "event_family": "counterparty_requested_correction",
+      "to": "waiting_for_artifact"
+    },
+    {
+      "from": "waiting_for_artifact",
+      "event_family": "corrected_document_received",
+      "to": "updated"
+    },
+    {
+      "from": "updated",
+      "event_family": "shipment_hold_changed",
+      "to": "updated"
+    },
+    {
+      "from": "updated",
+      "event_family": "case_resolved",
+      "to": "resolved"
+    }
+  ]
+}

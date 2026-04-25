@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledger.allora.usable.dev/schemas/flowcore-event.v0.schema.json",
+  "title": "Supply-chain Exception Ledger v0 Flowcore Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_family",
+    "canonical_key",
+    "source_family",
+    "occurred_at",
+    "provenance"
+  ],
+  "properties": {
+    "event_family": {
+      "enum": [
+        "shipment_hold_changed",
+        "expected_document_present",
+        "expected_document_missing",
+        "document_mismatch_detected",
+        "counterparty_requested_correction",
+        "corrected_document_received",
+        "operator_note_recorded",
+        "case_resolved"
+      ]
+    },
+    "canonical_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shipment_id", "document_type", "order_reference"],
+      "properties": {
+        "shipment_id": { "type": "string", "minLength": 1 },
+        "document_type": { "const": "commercial_invoice" },
+        "order_reference": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source_family": {
+      "enum": [
+        "erp_order_invoice",
+        "wms_shipment",
+        "tms_milestone",
+        "edi_document_status",
+        "email_attachment_intake"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "artifact_ref"],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "artifact_ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "correlation_state": {
+      "enum": ["provisional", "canonical"]
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}
