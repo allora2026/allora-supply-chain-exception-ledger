@@ -1,4 +1,9 @@
-import type { ExceptionCase, EvidenceItem, ResolutionStatus } from '../projection/exceptionProjector';
+import type {
+  ExceptionCase,
+  EvidenceItem,
+  ResolutionStatus,
+  SimilarCaseReference
+} from '../projection/exceptionProjector';
 
 export interface ExceptionListItem {
   caseId: string;
@@ -42,12 +47,19 @@ export interface HandoffNotes {
   notes: string[];
 }
 
+export interface SimilarHistoricalException {
+  caseId: string;
+  summary: string;
+  resolutionStatus: ResolutionStatus;
+}
+
 export interface ResolutionSnapshot {
   title: 'Resolution Snapshot';
   resolutionStatus: ResolutionStatus;
   summary: string;
   openQuestionsCount: number;
   evidenceCount: number;
+  similarCases: SimilarHistoricalException[];
 }
 
 export interface OperatorSurfaceModel {
@@ -94,6 +106,14 @@ function pickPrimaryCase(exceptionCases: ExceptionCase[]): ExceptionCase | null 
   return exceptionCases[0] ?? null;
 }
 
+function mapSimilarCases(similarCases: SimilarCaseReference[]): SimilarHistoricalException[] {
+  return similarCases.map((item) => ({
+    caseId: item.case_id,
+    summary: item.summary,
+    resolutionStatus: item.resolution_status
+  }));
+}
+
 export function buildOperatorSurfaceModel(exceptionCases: ExceptionCase[]): OperatorSurfaceModel {
   const primaryCase = pickPrimaryCase(exceptionCases);
 
@@ -127,7 +147,7 @@ export function buildOperatorSurfaceModel(exceptionCases: ExceptionCase[]): Oper
       : [],
     missingArtifactPanel: {
       title: 'Missing Artifact Panel',
-      items: primaryCase?.open_questions ?? []
+      items: primaryCase?.usable_case_memory.missing_artifact_questions ?? []
     },
     counterpartState: primaryCase
       ? {
@@ -139,21 +159,16 @@ export function buildOperatorSurfaceModel(exceptionCases: ExceptionCase[]): Oper
       : null,
     handoffNotes: {
       title: 'Handoff Notes',
-      notes: primaryCase
-        ? [
-            'Single-app boundary: ledger.allora.usable.dev',
-            `Focus the next shift on ${primaryCase.canonical_key.document_type} for order ${primaryCase.canonical_key.order_reference}.`,
-            `Current operator hypothesis: ${primaryCase.operator_hypothesis}`
-          ]
-        : ['Single-app boundary: ledger.allora.usable.dev']
+      notes: primaryCase?.usable_case_memory.handoff_notes ?? ['Single-app boundary: ledger.allora.usable.dev']
     },
     resolutionSnapshot: primaryCase
       ? {
           title: 'Resolution Snapshot',
           resolutionStatus: primaryCase.resolution_status,
-          summary: buildResolutionSummary(primaryCase),
+          summary: primaryCase.usable_case_memory.resolution_snapshot?.summary ?? buildResolutionSummary(primaryCase),
           openQuestionsCount: primaryCase.open_questions.length,
-          evidenceCount: primaryCase.evidence.length
+          evidenceCount: primaryCase.evidence.length,
+          similarCases: mapSimilarCases(primaryCase.usable_case_memory.similar_cases)
         }
       : null
   };
@@ -205,6 +220,15 @@ export function renderOperatorSurface(model: OperatorSurfaceModel): string {
       'Resolution Snapshot',
       `- ${model.resolutionSnapshot.summary}`
     );
+
+    if (model.resolutionSnapshot.similarCases.length > 0) {
+      sections.push(
+        'Similar Historical Exceptions',
+        ...model.resolutionSnapshot.similarCases.map(
+          (item) => `- ${item.caseId} [${item.resolutionStatus}] -> ${item.summary}`
+        )
+      );
+    }
   }
 
   return sections.join('\n');

@@ -31,6 +31,26 @@ export interface EventProvenance {
   artifact_ref: string;
 }
 
+export interface SimilarCaseReference {
+  case_id: string;
+  summary: string;
+  resolution_status: ResolutionStatus;
+}
+
+export interface ResolutionSnapshotMemory {
+  summary: string;
+  recorded_at: string;
+  source_event_id: string;
+}
+
+export interface UsableCaseMemory {
+  handoff_notes: string[];
+  operator_hypotheses: string[];
+  missing_artifact_questions: string[];
+  resolution_snapshot: ResolutionSnapshotMemory | null;
+  similar_cases: SimilarCaseReference[];
+}
+
 export interface FlowcoreEventPayload {
   shipment_id?: string;
   invoice_reference?: string;
@@ -42,6 +62,8 @@ export interface FlowcoreEventPayload {
   open_questions?: string[];
   release_status?: ReleaseStatus;
   customs_supporting_document_type?: 'packing_list' | 'certificate_of_origin' | 'other_customs_supporting_doc';
+  similar_cases?: SimilarCaseReference[];
+  resolution_summary?: string;
 }
 
 export interface FlowcoreEvent {
@@ -78,6 +100,7 @@ export interface ExceptionCase {
   blocking_counterpart: BlockingCounterpart;
   operator_hypothesis: string;
   open_questions: string[];
+  usable_case_memory: UsableCaseMemory;
   evidence: EvidenceItem[];
   resolution_status: ResolutionStatus;
   source_families: SourceFamily[];
@@ -166,6 +189,10 @@ function pushUnique<T>(items: T[], value: T): void {
   }
 }
 
+function cloneSimilarCases(similarCases: SimilarCaseReference[]): SimilarCaseReference[] {
+  return similarCases.map((item) => ({ ...item }));
+}
+
 function cloneCase(currentCase: ExceptionCase): ExceptionCase {
   return {
     ...currentCase,
@@ -173,9 +200,29 @@ function cloneCase(currentCase: ExceptionCase): ExceptionCase {
     shipment: { ...currentCase.shipment },
     customer_context: { ...currentCase.customer_context },
     open_questions: [...currentCase.open_questions],
+    usable_case_memory: {
+      handoff_notes: [...currentCase.usable_case_memory.handoff_notes],
+      operator_hypotheses: [...currentCase.usable_case_memory.operator_hypotheses],
+      missing_artifact_questions: [...currentCase.usable_case_memory.missing_artifact_questions],
+      resolution_snapshot: currentCase.usable_case_memory.resolution_snapshot
+        ? { ...currentCase.usable_case_memory.resolution_snapshot }
+        : null,
+      similar_cases: cloneSimilarCases(currentCase.usable_case_memory.similar_cases)
+    },
     evidence: currentCase.evidence.map((item) => ({ ...item })),
     source_families: [...currentCase.source_families]
   };
+}
+
+function createInitialHandoffNotes(event: FlowcoreEvent): string[] {
+  return [
+    'Single-app boundary: ledger.allora.usable.dev',
+    `Focus the next shift on ${event.canonical_key.document_type} for order ${event.canonical_key.order_reference}.`
+  ];
+}
+
+function shouldRecordHandoffNote(event: FlowcoreEvent): boolean {
+  return event.event_family !== 'expected_document_missing' && Boolean(event.payload?.operator_hypothesis);
 }
 
 export class ExceptionCaseProjector {
@@ -203,14 +250,10 @@ export class ExceptionCaseProjector {
     const currentStatus = this.currentCase.resolution_status;
     const nextStatus = TRANSITIONS[currentStatus][event.event_family];
 
-    if (!nextStatus) {
-      this.mergeEvidence(event);
-      this.mergeSourceFamily(event.source_family);
-      this.seenEventIds.add(event.provenance.event_id);
-      return this.getCase();
+    if (nextStatus) {
+      this.currentCase.resolution_status = nextStatus;
     }
 
-    this.currentCase.resolution_status = nextStatus;
     this.mergeCaseDetails(event);
     this.mergeEvidence(event);
     this.mergeSourceFamily(event.source_family);
@@ -227,6 +270,8 @@ export class ExceptionCaseProjector {
     const classification = inferClassification(event);
     const invoiceReference = assertNonEmpty(event.payload?.invoice_reference, 'payload.invoice_reference');
     const customerName = assertNonEmpty(event.payload?.customer_name, 'payload.customer_name');
+    const operatorHypothesis = event.payload?.operator_hypothesis ?? buildDefaultHypothesis(classification);
+    const openQuestions = event.payload?.open_questions ?? buildDefaultQuestions(classification);
 
     return {
       case_type: 'commercial_invoice_or_customs_document_exception',
@@ -243,8 +288,15 @@ export class ExceptionCaseProjector {
       },
       classification,
       blocking_counterpart: event.payload?.blocking_counterpart ?? defaultBlockingCounterpart(event.source_family),
-      operator_hypothesis: event.payload?.operator_hypothesis ?? buildDefaultHypothesis(classification),
-      open_questions: event.payload?.open_questions ?? buildDefaultQuestions(classification),
+      operator_hypothesis: operatorHypothesis,
+      open_questions: openQuestions,
+      usable_case_memory: {
+        handoff_notes: createInitialHandoffNotes(event),
+        operator_hypotheses: [operatorHypothesis],
+        missing_artifact_questions: [...openQuestions],
+        resolution_snapshot: null,
+        similar_cases: cloneSimilarCases(event.payload?.similar_cases ?? [])
+      },
       evidence: [createEvidence(event)],
       resolution_status: 'open',
       source_families: [event.source_family]
@@ -281,14 +333,33 @@ export class ExceptionCaseProjector {
 
     if (payload?.operator_hypothesis) {
       this.currentCase.operator_hypothesis = payload.operator_hypothesis;
+      pushUnique(this.currentCase.usable_case_memory.operator_hypotheses, payload.operator_hypothesis);
+      if (shouldRecordHandoffNote(event)) {
+        pushUnique(this.currentCase.usable_case_memory.handoff_notes, payload.operator_hypothesis);
+      }
     }
 
     if (payload?.open_questions) {
       this.currentCase.open_questions = payload.open_questions;
+      this.currentCase.usable_case_memory.missing_artifact_questions = [...payload.open_questions];
     } else if (event.event_family === 'corrected_document_received') {
       this.currentCase.open_questions = ['Has release control acknowledged the corrected commercial invoice?'];
+      this.currentCase.usable_case_memory.missing_artifact_questions = [...this.currentCase.open_questions];
     } else if (event.event_family === 'case_resolved') {
       this.currentCase.open_questions = [];
+      this.currentCase.usable_case_memory.missing_artifact_questions = [];
+    }
+
+    if (payload?.similar_cases) {
+      this.currentCase.usable_case_memory.similar_cases = cloneSimilarCases(payload.similar_cases);
+    }
+
+    if (payload?.resolution_summary) {
+      this.currentCase.usable_case_memory.resolution_snapshot = {
+        summary: payload.resolution_summary,
+        recorded_at: event.occurred_at,
+        source_event_id: event.provenance.event_id
+      };
     }
   }
 

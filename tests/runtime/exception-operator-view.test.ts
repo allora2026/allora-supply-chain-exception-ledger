@@ -83,7 +83,14 @@ describe('exception operator surface', () => {
           consignee_name: 'North Harbor Imports',
           blocking_counterpart: 'broker',
           operator_hypothesis: 'Corrected commercial invoice received and ready for broker review.',
-          release_status: 'pending_release'
+          release_status: 'pending_release',
+          similar_cases: [
+            {
+              case_id: 'SHIP-900::commercial_invoice::ORDER-900',
+              summary: 'Prior customs-document miss resolved after the broker accepted a corrected invoice PDF.',
+              resolution_status: 'resolved'
+            }
+          ]
         }
       }),
       baseEvent({
@@ -146,14 +153,23 @@ describe('exception operator surface', () => {
     expect(model.handoffNotes.notes).toEqual([
       'Single-app boundary: ledger.allora.usable.dev',
       'Focus the next shift on commercial_invoice for order ORDER-456.',
-      'Current operator hypothesis: Release control is rechecking the corrected invoice before final release.'
+      'Broker requested a corrected commercial invoice PDF.',
+      'Corrected commercial invoice received and ready for broker review.',
+      'Release control is rechecking the corrected invoice before final release.'
     ]);
     expect(model.resolutionSnapshot).toEqual({
       title: 'Resolution Snapshot',
       resolutionStatus: 'updated',
       summary: 'Case is updated and awaiting final release acknowledgement.',
       openQuestionsCount: 1,
-      evidenceCount: 4
+      evidenceCount: 4,
+      similarCases: [
+        {
+          caseId: 'SHIP-900::commercial_invoice::ORDER-900',
+          summary: 'Prior customs-document miss resolved after the broker accepted a corrected invoice PDF.',
+          resolutionStatus: 'resolved'
+        }
+      ]
     });
 
     expect(rendered).toContain('ledger.allora.usable.dev');
@@ -164,5 +180,7 @@ describe('exception operator surface', () => {
     expect(rendered).toContain('Counterpart State');
     expect(rendered).toContain('Handoff Notes');
     expect(rendered).toContain('Resolution Snapshot');
+    expect(rendered).toContain('Similar Historical Exceptions');
+    expect(rendered).toContain('SHIP-900::commercial_invoice::ORDER-900');
   });
 });
