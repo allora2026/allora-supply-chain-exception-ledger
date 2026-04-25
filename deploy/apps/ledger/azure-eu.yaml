@@ -1,0 +1,19 @@
+flowcore-microservices:
+  deployments:
+    alloraSupplyChainExceptionLedger:
+      enabled: true
+      deployment:
+        tag: 0.0.0
+      env:
+        PORT:
+          value: "3000"
+        HOSTNAME:
+          value: "0.0.0.0"
+        NODE_ENV:
+          value: "production"
+        APP_BASE_URL:
+          value: "https://ledger.allora.usable.dev"
+        FLOWCORE_TENANT:
+          value: "allora"
+        EXCEPTION_CASE_TYPE:
+          value: "commercial_invoice_or_customs_document_exception"

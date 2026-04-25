@@ -1,0 +1,38 @@
+flowcore-microservices:
+  deployments:
+    alloraSupplyChainExceptionLedger:
+      enabled: false
+      deployment:
+        image: allora-supply-chain-exception-ledger
+        tag: pending-image
+        replicas: 1
+      service:
+        enabled: true
+        httpPort: 3000
+      ingress:
+        enabled: true
+        route:
+          - hosts:
+              - ledger.allora.usable.dev
+            tlsSecret: allora-wildcard-tls
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 3000
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 3000
+      env:
+        PORT:
+          value: "3000"
+        HOSTNAME:
+          value: "0.0.0.0"
+        NODE_ENV:
+          value: "production"
+        APP_BASE_URL:
+          value: "https://ledger.allora.usable.dev"
+        FLOWCORE_TENANT:
+          value: "allora"
+        EXCEPTION_CASE_TYPE:
+          value: "commercial_invoice_or_customs_document_exception"
