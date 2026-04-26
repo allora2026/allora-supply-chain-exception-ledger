@@ -27,15 +27,25 @@ That is deliberate. Better an honest runnable surface than fake completion.
 - scenario-driven case rendering for open / updated / resolved flows
 - Dockerfile + GHCR publish workflow
 - deployment contract files for `ledger.allora.usable.dev`
+- verified live deployment at `https://ledger.allora.usable.dev`
 - test suite covering runtime, contracts, and packaging
 
 ## What is still missing
 
 - real Flowcore event ingestion
 - real Usable-backed persistence
-- real image publication
-- real manifests in `flowcore-io/allora-manifests`
-- a verified live deployment at `ledger.allora.usable.dev`
+- production event subscriptions and writes beyond the deterministic demo scenarios
+
+## Verified public demo surface
+
+As of 2026-04-26, the deterministic demo is publicly reachable at:
+- `https://ledger.allora.usable.dev/`
+- `https://ledger.allora.usable.dev/health`
+- `https://ledger.allora.usable.dev/api/demo/open`
+- `https://ledger.allora.usable.dev/api/demo/updated`
+- `https://ledger.allora.usable.dev/api/demo/resolved`
+
+This is a real deployed surface, but it is still intentionally bounded to deterministic demo data rather than live Flowcore or Usable production integrations.
 
 ## Local run
 

@@ -24,6 +24,17 @@ Use the existing projector and operator-surface fixtures to verify the demo path
 3. **Resolve the case** by replaying `case_resolved` and verify the final status is `resolved` with a concrete resolution snapshot. This step should resolve the case while preserving the same canonical key.
 4. **Verify reusable case memory** by confirming the resolved case keeps durable `usable_case_memory` content: handoff notes, operator hypotheses, missing-artifact questions, the resolution snapshot, and similar historical case recall for the next operator shift. This final check proves reusable case memory is available for future operators.
 
+## Verified public rollout evidence
+
+The deployed deterministic demo is now reachable at `https://ledger.allora.usable.dev`.
+
+Verified on 2026-04-26:
+- `GET /health` returned `200 {"ok": true, "application": "ledger.allora.usable.dev"}`
+- Browser verification showed the homepage loaded and the Open / Updated / Resolved scenario buttons rendered the expected operator surfaces without console errors
+- `GET /api/demo/open`, `GET /api/demo/updated`, and `GET /api/demo/resolved` all responded on the public host
+
+This is still an honest demo boundary, not live Flowcore ingestion or live Usable production persistence.
+
 ## Suggested repo checks
 
 - `pnpm test`
