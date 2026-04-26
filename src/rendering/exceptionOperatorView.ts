@@ -3,7 +3,7 @@ import type {
   EvidenceItem,
   ResolutionStatus,
   SimilarCaseReference
-} from '../projection/exceptionProjector';
+} from '../projection/exceptionProjector.js';
 
 export interface ExceptionListItem {
   caseId: string;
@@ -86,6 +86,8 @@ function buildStatusMessage(exceptionCase: ExceptionCase): string {
       return `Waiting on ${exceptionCase.blocking_counterpart}-facing release confirmation for shipment ${exceptionCase.shipment.shipment_id}.`;
     case 'released':
       return `Shipment ${exceptionCase.shipment.shipment_id} is released.`;
+    default:
+      return `Shipment ${exceptionCase.shipment.shipment_id} status is unknown.`;
   }
 }
 
@@ -99,6 +101,8 @@ function buildResolutionSummary(exceptionCase: ExceptionCase): string {
       return 'Case is updated and awaiting final release acknowledgement.';
     case 'resolved':
       return 'Case is resolved and ready for memory closeout.';
+    default:
+      return 'Case status is unknown.';
   }
 }
 
@@ -137,7 +141,7 @@ export function buildOperatorSurfaceModel(exceptionCases: ExceptionCase[]): Oper
         }
       : null,
     evidenceTimeline: primaryCase
-      ? primaryCase.evidence.map((item, index) => ({
+      ? primaryCase.evidence.map((item: EvidenceItem, index: number) => ({
           label: `Evidence ${index + 1}`,
           sourceFamily: item.source_family,
           artifactRef: item.artifact_ref,
