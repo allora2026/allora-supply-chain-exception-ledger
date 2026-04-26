@@ -1,51 +1,105 @@
 # Supply-chain Exception Ledger
 
-An honest runnable demo for the Supply-chain Exception Ledger v0 operator flow.
+Supply-chain Exception Ledger is now a runnable HTTP app with a real trigger path, honest local-only fallback, and optional live Flowcore + Usable integration.
 
-## What this is
+## What this is now
 
-This repo now contains a real Node runtime that lets you inspect the exception-case projection and operator-surface behavior through deterministic demo scenarios.
+This repo is no longer limited to deterministic read-only demo routes.
 
-Current surface:
+It now supports:
+- `POST /api/events/trigger` to ingest a real Flowcore-shaped exception event
+- persisted local runtime state for events and projected cases
+- live Flowcore ingestion when `FLOWCORE_API_KEY` and `FLOWCORE_DATA_CORE_ID` are configured
+- live Usable fragment create/update when `USABLE_ACCESS_TOKEN`, `USABLE_WORKSPACE_ID`, and `USABLE_FRAGMENT_TYPE_ID` are configured
+- honest `local-only` behavior when those credentials are absent
+- explicit persisted mode reporting on every case and in runtime status responses
+- the existing demo scenario routes for inspection and regression coverage
+
+## Runtime endpoints
+
 - `GET /health`
 - `GET /`
+- `GET /api/runtime/status`
+- `GET /api/events`
+- `GET /api/cases`
+- `GET /api/cases/:caseId`
+- `POST /api/events/trigger`
+- `POST /api/cases/:caseId/refresh-usable`
 - `GET /api/demo/open`
 - `GET /api/demo/updated`
 - `GET /api/demo/resolved`
 
-The homepage is intentionally blunt:
-- this is a deterministic demo
-- it is **not** live Flowcore ingestion
-- it is **not** live Usable production memory
+## Honest mode split
 
-That is deliberate. Better an honest runnable surface than fake completion.
+### Local-only mode
 
-## What works now
+If Flowcore and/or Usable credentials are missing:
+- trigger requests still work
+- events and cases are persisted in the local runtime store
+- responses clearly report `local-only`
+- no external completion is implied
 
-- health endpoint for deployment probes
-- HTTP demo server built from the existing projector and operator-surface modules
-- scenario-driven case rendering for open / updated / resolved flows
-- Dockerfile + GHCR publish workflow
-- deployment contract files for `ledger.allora.usable.dev`
-- verified live deployment at `https://ledger.allora.usable.dev`
-- test suite covering runtime, contracts, and packaging
+### Live mode
 
-## What is still missing
+If credentials are present:
+- the trigger route forwards the incoming event to Flowcore at `https://webhook.api.flowcore.io`
+- the projected case creates or updates a real Usable fragment through `https://usable.dev/api`
+- persisted case state includes the returned live Flowcore event ids and Usable fragment metadata
 
-- real Flowcore event ingestion
-- real Usable-backed persistence
-- production event subscriptions and writes beyond the deterministic demo scenarios
+## Environment variables
 
-## Verified public demo surface
+### Flowcore
 
-As of 2026-04-26, the deterministic demo is publicly reachable at:
-- `https://ledger.allora.usable.dev/`
-- `https://ledger.allora.usable.dev/health`
-- `https://ledger.allora.usable.dev/api/demo/open`
-- `https://ledger.allora.usable.dev/api/demo/updated`
-- `https://ledger.allora.usable.dev/api/demo/resolved`
+- `FLOWCORE_API_KEY`
+- `FLOWCORE_TENANT` (defaults to `allora2026`)
+- `FLOWCORE_DATA_CORE_ID`
+- `FLOWCORE_DATA_CORE_NAME` (defaults to `supply-chain-exception-ledger`)
+- `FLOWCORE_FLOW_TYPE` (defaults to `supply-chain-exception-ledger.0`)
+- `FLOWCORE_EVENT_TYPE` (defaults to `commercial-invoice-exception.0`)
+- `FLOWCORE_PATHWAY_NAME` (defaults to `supply-chain-exception-ledger`)
+- `FLOWCORE_INGESTION_BASE_URL` (defaults to `https://webhook.api.flowcore.io`)
 
-This is a real deployed surface, but it is still intentionally bounded to deterministic demo data rather than live Flowcore or Usable production integrations.
+### Usable
+
+- `USABLE_ACCESS_TOKEN`
+- `USABLE_WORKSPACE_ID`
+- `USABLE_FRAGMENT_TYPE_ID`
+- `USABLE_API_BASE_URL` (defaults to `https://usable.dev/api`)
+- `USABLE_APP_BASE_URL` (defaults to `https://usable.dev`)
+
+### Runtime store
+
+- `RUNTIME_STORE_FILE` (defaults to `data/runtime-store.json`)
+
+## Example trigger
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/events/trigger \
+  -H 'content-type: application/json' \
+  -d '{
+    "event_family": "expected_document_missing",
+    "canonical_key": {
+      "shipment_id": "SHIP-123",
+      "document_type": "commercial_invoice",
+      "order_reference": "ORDER-456"
+    },
+    "source_family": "erp_order_invoice",
+    "occurred_at": "2026-04-25T16:00:00.000Z",
+    "provenance": {
+      "event_id": "evt-open",
+      "artifact_ref": "erp://orders/ORDER-456/invoice"
+    },
+    "payload": {
+      "invoice_reference": "INV-9",
+      "customer_name": "Acme Exporters",
+      "consignee_name": "North Harbor Imports",
+      "blocking_counterpart": "broker",
+      "operator_hypothesis": "Broker cannot clear the shipment until the commercial invoice is present.",
+      "open_questions": ["Which corrected commercial invoice file is the broker waiting on?"],
+      "release_status": "hold"
+    }
+  }'
+```
 
 ## Local run
 
@@ -54,11 +108,7 @@ pnpm install
 pnpm start
 ```
 
-Then open:
-- `http://127.0.0.1:3000/`
-- `http://127.0.0.1:3000/api/demo/open`
-- `http://127.0.0.1:3000/api/demo/updated`
-- `http://127.0.0.1:3000/api/demo/resolved`
+Then open `http://127.0.0.1:3000/`.
 
 ## Quality checks
 
@@ -68,9 +118,11 @@ pnpm test
 pnpm build
 ```
 
-## Deployment goal
+## Current honesty boundary
 
-The intended public host is:
-- `https://ledger.allora.usable.dev`
+Without real credentials in the environment, this repo is still only locally verifiable for its external integrations.
 
-But do not claim that host is live until the image is published, the manifests repo is updated, and the deployed host passes real HTTP checks.
+That means:
+- the app is genuinely triggerable end-to-end inside the repo
+- the live Flowcore and Usable code paths are implemented and tested with mocked external calls
+- a fully verified production live round-trip still depends on valid external credentials at deploy/runtime

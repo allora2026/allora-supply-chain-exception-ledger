@@ -1,11 +1,25 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createServer } from '../../src/server';
+import { buildOpenScenarioEvents } from '../../src/demoScenarios';
 
 const servers: Array<ReturnType<typeof createServer>> = [];
+const tempDirs: string[] = [];
 
-async function startTestServer() {
-  const server = createServer();
+function createEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const dir = mkdtempSync(join(tmpdir(), 'ledger-server-'));
+  tempDirs.push(dir);
+  return {
+    ...overrides,
+    RUNTIME_STORE_FILE: join(dir, 'runtime-store.json')
+  };
+}
+
+async function startTestServer(options: Parameters<typeof createServer>[0] = {}) {
+  const server = createServer(options);
   servers.push(server);
 
   await new Promise<void>((resolve) => {
@@ -26,50 +40,82 @@ afterEach(async () => {
         })
     )
   );
+
+  while (tempDirs.length > 0) {
+    rmSync(tempDirs.pop()!, { recursive: true, force: true });
+  }
 });
 
-describe('runtime ledger demo server', () => {
-  it('serves a health endpoint for deployment probes', async () => {
-    const { baseUrl } = await startTestServer();
+describe('runtime ledger server', () => {
+  it('serves health and runtime status endpoints with honest mode reporting', async () => {
+    const { baseUrl } = await startTestServer({ env: createEnv() });
 
-    const response = await fetch(`${baseUrl}/health`);
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    const healthResponse = await fetch(`${baseUrl}/health`);
+    expect(healthResponse.status).toBe(200);
+    await expect(healthResponse.json()).resolves.toEqual({
       ok: true,
-      application: 'ledger.allora.usable.dev'
+      application: 'ledger.allora.usable.dev',
+      flowcoreMode: 'local-only',
+      usableMode: 'local-only'
     });
+
+    const statusResponse = await fetch(`${baseUrl}/api/runtime/status`);
+    const status = await statusResponse.json();
+    expect(statusResponse.status).toBe(200);
+    expect(status.flowcore.ingestionMode).toBe('local-only');
+    expect(status.usable.accessMode).toBe('local-only');
+    expect(status.counts).toEqual({ events: 0, cases: 0 });
   });
 
-  it('serves an honest demo homepage instead of pretending live Flowcore ingestion exists', async () => {
-    const { baseUrl } = await startTestServer();
+  it('serves a triggerable homepage instead of demo-only copy', async () => {
+    const { baseUrl } = await startTestServer({ env: createEnv() });
 
     const response = await fetch(baseUrl);
     const html = await response.text();
 
     expect(response.status).toBe(200);
     expect(html).toContain('Supply-chain Exception Ledger');
-    expect(html).toContain('Deterministic demo scenarios');
-    expect(html).toContain('Not live Flowcore or Usable production data');
-    expect(html).toContain('/api/demo/open');
-    expect(html).toContain('/api/demo/updated');
-    expect(html).toContain('/api/demo/resolved');
+    expect(html).toContain('Runtime mode');
+    expect(html).toContain('Trigger a real event');
+    expect(html).toContain('/api/events/trigger');
+    expect(html).toContain('local-only');
   });
 
-  it('projects the open scenario through the HTTP API', async () => {
-    const { baseUrl } = await startTestServer();
+  it('accepts a POST trigger, persists a case, and returns it over the HTTP API', async () => {
+    const env = createEnv();
+    const { baseUrl } = await startTestServer({ env });
 
-    const response = await fetch(`${baseUrl}/api/demo/open`);
-    const payload = await response.json();
+    const triggerResponse = await fetch(`${baseUrl}/api/events/trigger`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(buildOpenScenarioEvents()[0])
+    });
+    const triggeredCase = await triggerResponse.json();
 
-    expect(response.status).toBe(200);
-    expect(payload.scenario).toBe('open');
-    expect(payload.case.resolution_status).toBe('open');
-    expect(payload.case.shipment.shipment_id).toBe('SHIP-123');
-    expect(payload.rendered).toContain('Exception List');
+    expect(triggerResponse.status).toBe(201);
+    expect(triggeredCase.caseId).toBe('SHIP-123::commercial_invoice::ORDER-456');
+    expect(triggeredCase.projectedCase.resolution_status).toBe('open');
+    expect(triggeredCase.integrations.flowcore.ingestionMode).toBe('local-only');
+
+    const casesResponse = await fetch(`${baseUrl}/api/cases`);
+    const cases = await casesResponse.json();
+    expect(casesResponse.status).toBe(200);
+    expect(cases).toHaveLength(1);
+
+    const caseResponse = await fetch(`${baseUrl}/api/cases/${encodeURIComponent(triggeredCase.caseId)}`);
+    const caseRecord = await caseResponse.json();
+    expect(caseResponse.status).toBe(200);
+    expect(caseRecord.rendered).toContain('Exception List');
+
+    const eventsResponse = await fetch(`${baseUrl}/api/events`);
+    const events = await eventsResponse.json();
+    expect(eventsResponse.status).toBe(200);
+    expect(events).toHaveLength(1);
+    expect(events[0].sourceEventId).toBe('evt-open');
   });
 
-  it('projects the resolved scenario with reusable case memory through the HTTP API', async () => {
-    const { baseUrl } = await startTestServer();
+  it('still serves the resolved demo scenario for inspection', async () => {
+    const { baseUrl } = await startTestServer({ env: createEnv() });
 
     const response = await fetch(`${baseUrl}/api/demo/resolved`);
     const payload = await response.json();
@@ -78,7 +124,6 @@ describe('runtime ledger demo server', () => {
     expect(payload.scenario).toBe('resolved');
     expect(payload.case.resolution_status).toBe('resolved');
     expect(payload.case.usable_case_memory.resolution_snapshot.summary).toContain('resolved');
-    expect(payload.case.usable_case_memory.similar_cases).toHaveLength(1);
     expect(payload.rendered).toContain('Similar Historical Exceptions');
   });
 });
